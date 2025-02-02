@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:5001"); // Backend server address
+const socket = io("http://localhost:5001"); // Replace with your backend URL
 
 const Canvas = () => {
     const canvasRef = useRef(null);
@@ -16,20 +16,26 @@ const Canvas = () => {
         canvas.height = window.innerHeight;
         ctxRef.current = canvas.getContext("2d");
         ctxRef.current.lineCap = "round";
-
-        // Listen for real-time draw events from the server
-        socket.on("draw", ({ x, y, color, brushSize }) => {
-            ctxRef.current.strokeStyle = color;
-            ctxRef.current.lineWidth = brushSize;
-            ctxRef.current.lineTo(x, y);
-            ctxRef.current.stroke();
-        });
-
-        // Listen for clear board events
-        socket.on("clear", () => {
-            ctxRef.current.clearRect(0, 0, canvas.width, canvas.height);
-        });
+    
+        // Handle window resizing to keep the canvas updated
+        const resizeCanvas = () => {
+            const tempCanvas = document.createElement("canvas");
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCanvas.getContext("2d").drawImage(canvas, 0, 0);
+    
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+    
+            ctxRef.current = canvas.getContext("2d");
+            ctxRef.current.lineCap = "round";
+            ctxRef.current.drawImage(tempCanvas, 0, 0);
+        };
+    
+        window.addEventListener("resize", resizeCanvas);
+        return () => window.removeEventListener("resize", resizeCanvas);
     }, []);
+    
 
     const startDrawing = (e) => {
         ctxRef.current.beginPath();
@@ -39,18 +45,19 @@ const Canvas = () => {
 
     const draw = (e) => {
         if (!drawing) return;
+    
+        // Update the drawing context dynamically with the new brush size
+        ctxRef.current.strokeStyle = color;
+        ctxRef.current.lineWidth = brushSize;
+    
         ctxRef.current.lineTo(e.clientX, e.clientY);
         ctxRef.current.stroke();
-
-        // Emit draw event to the server
-        socket.emit("draw", {
-            x: e.clientX,
-            y: e.clientY,
-            color,
-            brushSize,
-        });
+    
+        // Emit draw event with the updated brush size
+        socket.emit("draw", { x: e.clientX, y: e.clientY, color, brushSize });
     };
-
+    
+    
     const stopDrawing = () => {
         setDrawing(false);
     };
@@ -59,25 +66,49 @@ const Canvas = () => {
         const canvas = canvasRef.current;
         ctxRef.current.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Emit clear event to the server
         socket.emit("clear");
     };
 
+    const setEraser = () => {
+        setColor("#FFFFFF"); // Set eraser color to canvas background
+    };
+
     return (
-        <div>
+        <div style={{ position: "relative", height: "100vh", width: "100vw" }}>
             <canvas
                 ref={canvasRef}
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
-                style={{ border: "1px solid black" }}
+                style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    zIndex: 0, // Ensure canvas is below the controls
+                }}
             />
-            <div>
-                <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
-                <input type="range" min="1" max="10" value={brushSize} onChange={(e) => setBrushSize(e.target.value)} />
-                <button onClick={clearCanvas}>Clear Board</button>
+            <div style={{ position: "absolute", top: "10px", left: "10px", zIndex: 1 }}>
+                <input
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    style={{ marginRight: "10px" }}
+                />
+                <input
+                    type="range"
+                    min="1"
+                    max="50"
+                    value={brushSize}
+                    onChange={(e) => setBrushSize(Number(e.target.value))}
+                    style={{ marginRight: "10px" }}
+                />
+                <button onClick={clearCanvas} style={{ marginRight: "10px" }}>Clear Board</button>
+                <button onClick={setEraser}>Eraser</button>
             </div>
         </div>
     );
+    
+    
 };
 
+export default Canvas;
